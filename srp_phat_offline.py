@@ -21,10 +21,11 @@ def main():
     else:
         raise FileExistsError("the file path is not correct or pass via --wave")
 
-    if params.ignored_channels is not None:
-        mask = np.ones(params.channels, bool)
+    params.ignored_channels = [int(i) for i in params.ignored_channels if str(i).isnumeric()]
+    mask = np.ones(params.channels, bool)
+    if not params.ignored_channels == []:
         mask[params.ignored_channels] = False
-        x = np.transpose(x)[mask, :]
+    x = np.transpose(x)[mask, :]
 
     duet = Duet(
         x,
