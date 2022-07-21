@@ -4,27 +4,34 @@ from pathlib import Path
 from src.utils.cmd_parser import parsing_params
 
 
-# Tested wave files
-# Path("data/a0e55.csv")
-# Path("data/a0e45_a-90e3.csv")
-# Path("data/a0e45_a270e3_a90e42.csv")
+PRETTY_PRINT = True
+TEMPLATE = "plotly_dark" if PRETTY_PRINT else "presentation"
+PAPER_BGCOLOR = "#212946" if PRETTY_PRINT else None
+PLOT_BGCOLOR = "#212946" if PRETTY_PRINT else None
+GRID_COLOR = "#5063AB" if PRETTY_PRINT else None
+
+MARKER_COLOR = "#00AFFF"
+MARKER_PROJ_COLOR = "#005FFF"
+
+MICS = np.array([
+    [-0.02285, -0.02285, +0.005],
+    [+0.02285, -0.02285, +0.005],
+    [+0.02285, +0.02285, +0.005],
+    [-0.02285, +0.02285, +0.005],
+])
 
 
 class PlotlySphere:
     def __init__(self, r=1):
         self.r = r
         self._fig = go.Figure()
-        self._mic_pos = np.array([
-            [-0.02285, -0.02285, +0.005],
-            [+0.02285, -0.02285, +0.005],
-            [+0.02285, +0.02285, +0.005],
-            [-0.02285, +0.02285, +0.005],
-        ])
+        self._fig.layout.template = TEMPLATE
+        self._mic_pos = MICS
 
         self._create_sphere()
 
-    def __call__(self, f_name="DOAS.html", auto_open=True):
-        self._fig.write_html(f_name, auto_open=auto_open)
+    def __call__(self, fname="DOAS.html", auto_open=True):
+        self._fig.write_html(fname, auto_open=auto_open)
 
     def _create_sphere(self):
         phi, theta = np.mgrid[0.0:np.pi:100j, 0.0:2.0*np.pi:100j]
@@ -38,20 +45,21 @@ class PlotlySphere:
         circle_y = circle_r * np.sin(circle_theta)
         circle_z = np.zeros_like(circle_theta)
 
-        self._fig.add_traces([
-            go.Surface(
-                x=x, y=y, z=z,
-                opacity=0.05,
-                colorscale="Plotly3",
-                contours_z=dict(
-                    show=True,
-                    usecolormap=True,
-                    highlightcolor="limegreen",
-                    project_z=True
-                ),
-                hoverinfo="skip",
-                name="sphere",
+        self._fig.add_surface(
+            x=x, y=y, z=z,
+            opacity=0.05,
+            colorscale="Plotly3",
+            contours_z=dict(
+                show=True,
+                usecolormap=True,
+                highlightcolor="limegreen",
+                project_z=True
             ),
+            hoverinfo="skip",
+            name="sphere",
+        )
+
+        self._fig.add_traces([
             go.Scatter3d(
                 x=circle_x, y=circle_y, z=circle_z,
                 mode="lines",
@@ -84,8 +92,26 @@ class PlotlySphere:
         ])
 
         self._fig.update_layout(
-            title_text="Ring cyclide",
+            title={"text": "SRP-PHAT Visualizer", "x": 0.47, "y": 0.99},
             scene_camera=dict(eye=dict(x=1.4, y=-1.4, z=1.4)),
+            paper_bgcolor=PAPER_BGCOLOR,
+            plot_bgcolor=PLOT_BGCOLOR,
+            scene=dict(
+                xaxis=dict(
+                    backgroundcolor=PAPER_BGCOLOR,
+                    gridcolor=GRID_COLOR,
+                ),
+                yaxis=dict(
+                    backgroundcolor=PAPER_BGCOLOR,
+                    gridcolor=GRID_COLOR,
+                ),
+                zaxis=dict(
+                    backgroundcolor=PAPER_BGCOLOR,
+                    gridcolor=GRID_COLOR,
+                ),
+            ),
+            showlegend=False,
+            margin=go.layout.Margin(l=0, r=0, b=0, t=0, pad=0)
         )
 
     def update_doas(self, points, name="sound_sources"):
@@ -96,39 +122,49 @@ class PlotlySphere:
             ) if trace.name == name else (),
         )
 
-    def add_doas(self, points, name="sound_sources"):
-        self._fig.add_trace(
-            go.Scatter3d(
-                x=points[:, 0], y=points[:, 1], z=points[:, 2],
+    def add_doas(self, doas, show_xyz_proj=None):
+        """Add the direction of arrivals in the Cartesian coordinates.
+
+        doas : np.ndarray
+            The doas is denoted as (azimuth, elevation) in degrees.
+            doas must have the following format: (n_loc, 2)
+
+        """
+        if doas.ndim == 1:
+            doas = np.expand_dims(doas, 0)
+
+        z = np.sin(doas[:, 1] / 57.293)
+        r = np.cos(doas[:, 1] / 57.293)
+        x = np.cos(doas[:, 0] / 57.293) * r
+        y = np.sin(doas[:, 0] / 57.293) * r
+        points = np.stack((x, y, z), axis=-1)
+
+        scatter_list = [
+            [points[:, 0], points[:, 1], points[:, 2], MARKER_COLOR],                   # xyz
+        ]
+
+        xyz_plane = [
+            [points[:, 0], points[:, 1], np.zeros(len(points))-1, MARKER_PROJ_COLOR],   # xy_plane
+            [points[:, 0], np.zeros(len(points))+1, points[:, 2], MARKER_PROJ_COLOR],   # yz_plane
+            [np.zeros(len(points))-1, points[:, 1], points[:, 2], MARKER_PROJ_COLOR],   # xz_plane
+        ]
+
+        if isinstance(show_xyz_proj, list):
+            for proj, plane in zip(show_xyz_proj, xyz_plane):
+                if len(proj*plane) != 0:
+                    scatter_list.extend([proj*plane])
+        elif show_xyz_proj:
+            scatter_list.extend(xyz_plane)
+
+        for x, y, z, c in scatter_list:
+            tbox = "X: %{x:.3f}<br>y: %{y:.3f}<br>z: %{z:.3f}<extra></extra>"
+            self._fig.add_scatter3d(
+                x=x, y=y, z=z,
                 mode="markers",
-                marker=dict(color="rgb(0,95,255)", size=5),
-                name=name,
+                marker=dict(color=c, size=5),
+                hovertemplate=tbox,
+                opacity=0.05,
             )
-        )  # xyz
-        self._fig.add_trace(
-            go.Scatter3d(
-                x=points[:, 0], y=points[:, 1], z=np.zeros(len(points))-1,
-                mode="markers",
-                marker=dict(color="rgb(0,175,255)", size=5),
-                name="xy plane",
-            )
-        )  # xy plane
-        self._fig.add_trace(
-            go.Scatter3d(
-                x=points[:, 0], y=np.zeros(len(points))+1, z=points[:, 2],
-                mode="markers",
-                marker=dict(color="rgb(0,175,255)", size=5),
-                name="yz plane",
-            )
-        )  # yz plane
-        self._fig.add_trace(
-            go.Scatter3d(
-                x=np.zeros(len(points))-1, y=points[:, 1], z=points[:, 2],
-                mode="markers",
-                marker=dict(color="rgb(0,175,255)", size=5),
-                name="xz plane",
-            )
-        )  # xz plane
 
 
 def main():
@@ -139,25 +175,19 @@ def main():
     if not Path(params.wave).is_file():
         raise FileExistsError("the file path is not correct or pass via --wave")
 
-    f_name = Path(params.wave)
+    fname = Path(params.wave)
 
     ps = PlotlySphere()
     for c in [(col*2, col*2+1) for col in range(params.src)]:
         doas = np.genfromtxt(
-            f_name,
+            fname,
             delimiter=",",
             skip_header=True,
             usecols=c,
             dtype=np.float32
         )
-        z = np.sin(doas[:, 1] / 57.293)
-        r = np.cos(doas[:, 1] / 57.293)
-        x = np.cos(doas[:, 0] / 57.293) * r
-        y = np.sin(doas[:, 0] / 57.293) * r
-        doas = np.stack((x, y, z), axis=-1)
-
-        ps.add_doas(doas)
-    ps(f_name=f_name.with_suffix(".html"))
+        ps.add_doas(doas, show_xyz_proj=[True, False, False])
+    ps(fname=fname.with_suffix(".html"))
 
 
 if __name__ == '__main__':
