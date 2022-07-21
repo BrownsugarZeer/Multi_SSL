@@ -16,7 +16,7 @@ def main():
             writer = csv.writer(csv_file)
             writer.writerow(["s1_azi", "s1_ele", "s2_azi", "s2_ele", "s3_azi", "s3_ele", "s4_azi", "s4_ele"])
 
-            for (waveform, sample_rate) in get_microphone_chunks(
+            for sample_rate, waveform in get_microphone_chunks(
                 rate=16000,
                 chunk=1600,
                 n_channels=params.channels,
@@ -36,13 +36,12 @@ def main():
                 estimates = estimates.astype(np.float32)
                 print(f"Find {len(estimates)} available sources.")
 
-                src = []
-                for wav in estimates:
-                    src.extend(
-                        doa_detection(torch.from_numpy(wav).unsqueeze(0))
-                    )
-
-                writer.writerow(src)
+                doas = doa_detection(torch.from_numpy(estimates))
+                doas[doas[:, 0] < 0] += torch.FloatTensor([[360, 0]])
+                for doa in doas:
+                    print(f"azi: {doa[0]: 6.1f}, ele: {doa[1]: 6.1f}")
+                print("="*51)
+                writer.writerow(doas.flatten().round().tolist())
 
     except KeyboardInterrupt:
         exit()

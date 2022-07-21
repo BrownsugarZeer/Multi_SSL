@@ -1,31 +1,32 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
 import scipy as sp
+import sys
 from pathlib import Path
-from scipy.signal import convolve2d
+from scipy.signal import convolve2d, find_peaks
+from .find_peaks import find_peak_indices
+from functools import wraps
 
 import cProfile
 import pstats
 from time import strftime
-from .find_peaks import find_peak_indices
-# from skimage.feature import peak_local_max
-np.set_printoptions(threshold=sys.maxsize)
 
+np.set_printoptions(threshold=sys.maxsize)
 FILEDIR = Path(__file__).resolve().parent
 EPSILON = 1e-16
 
 
-def performance_test(func):
+def profile_perf(func):
+    @wraps(func)
     def wrapper(*args, **kwargs):
         with cProfile.Profile() as pr:
-            print(f"Now use function `{func.__name__}`")
             result = func(*args, **kwargs)
         with open(
             f"perf_{strftime(r'%m_%d-%H_%M_%S')}_{func.__name__}.txt", 'w', encoding="utf-8"
         ) as stream:
             stats = pstats.Stats(pr, stream=stream)
             stats.strip_dirs().sort_stats('tottime').print_stats()
+            print(f"function `{func.__name__}` calls in {stats.get_stats_profile().total_tt} seconds")
         return result
     return wrapper
 
@@ -59,6 +60,7 @@ def tfsynthesis(n_sources, timefreqmat, swin, hop_length, n_fft):
     temp = n_fft * np.fft.ifft(timefreqmat, axis=1).real
     for i in range(numtime):
         x[:, i * hop_length: (i+2) * hop_length] += temp[:, ind, i] * swin
+
     return x
 
 
@@ -125,10 +127,11 @@ class Duet(object):
     Arguments
     ---------
     x : ndarray
-        The input audio signal with at least two channels.
+        The input audio signal with at least two channels,
+        The ndarray must have the following format: (n_channels, time_step).
     n_sources : int
-        (relative `numsources` in the paper) How many sources want to
-        be seperated (maximun observed sources).
+        How many sources want to be seperated (maximun observed sources).
+        (relative `numsources` in the paper)
     sample_rate : int
         Sample rate of the input audio signal (e.g 16000).
     mic_pair : tuple
@@ -137,37 +140,38 @@ class Duet(object):
         shape=(1, :) is mono, shape=(2, :) is stereo. The default is
         None (equivalent to tuple(0, 1)).
     attenuation_max : float
-        (relative `maxa` in the paper) Only consider attenuation yielding
-        estimates in bounds.
+        Only consider attenuation yielding estimates in bounds.
+        (relative `maxa` in the paper)
     n_attenuation_bins : int
-        (relative `abins` in the paper) The range of attenuation values
-        distributed into bins, default is 35.
+        The range of attenuation values distributed into bins, default is 35.
+        (relative `abins` in the paper)
     delay_max : float
-        (relative `maxd` in the paper) Only consider delay yielding
-        estimates in bounds.
+        Only consider delay yielding estimates in bounds.
+        (relative `maxd` in the paper)
     n_delay_bins : int
-        (relative `dbins` in the paper) The range of delay values
-        distributed into bins, default is 50.
+        The range of delay values distributed into bins, default is 50.
+        (relative `dbins` in the paper)
     p : int
         Weight the histogram with the symmetric attenuation estimator,
         default is 1.
     q : int
         Weight the histogram with the delay estimator, default is 0.
     output_all_channels : bool
-        If True, using the mask on the whole channels, the output
-        shape is (batch, time_step, n_channels). Return output shape
-        (batch, time_step) if setting is False, default is False.
+        If True, using the mask on the whole channels, the ndarray
+        must have the following format (batch, time_step, n_channels).
+        The ndarray must have the following format (batch, time_step)
+        if setting is False, default is False.
 
     Example
     -------
-    >>> from duet import Duet
+    >>> from bss import Duet
     >>> from scipy.io.wavfile import read, write
     >>> # x is stereo(2 channels)
-    >>> sr, x = read("<FILEDIR>/x.wav")
-    >>> duet = Duet(x, n_sources=5, sample_rate=sr)
+    >>> fs, x = read("<FILEDIR>/x.wav")
+    >>> duet = Duet(x, n_sources=5, sample_rate=fs)
     >>> estimates = duet()
     >>> for i in range(duet.n_sources):
-    >>>     write(f"output{i}.wav", duet.sr, estimates[i, :]+0.05*duet.x1)
+    >>>     write(f"output{i}.wav", duet.fs, estimates[i, :]+0.05*duet.x1)
     """
 
     def __init__(
@@ -186,7 +190,7 @@ class Duet(object):
     ):
         self.x = x
         self.n_sources = n_sources
-        self.sr = sample_rate
+        self.fs = sample_rate
         self.mic_pair = mic_pair
         self.attenuation_max = attenuation_max
         self.n_attenuation_bins = n_attenuation_bins
@@ -208,6 +212,7 @@ class Duet(object):
         self.norm_atn_delay_hist = None
         self.tf_weight = None
         self.bestind = None
+        self.prominences = None
         self._nfft = 1024
         self._win_length = 1024
         self._hop_length = 512
@@ -218,12 +223,12 @@ class Duet(object):
             self.mic_pair = (0, 1)
 
     def __call__(self):
-        return self.run(self.mic_pair)
+        return self.run()
 
-    def run(self, *args):
+    def run(self):
         # Create the spectrogram of the Left and Right channels, and remove DC
         # component to avoid dividing by zero frequency in the delay estimation.
-        self.tf1, self.tf2, self.fmat = self._contruct_histogram(*args)
+        self.tf1, self.tf2, self.fmat = self._contruct_histogram(self.mic_pair)
 
         # For each time/frequency compare the phase and amplitude of the left and
         # right channels. This gives two new coordinates, instead of time-frequency
@@ -237,7 +242,7 @@ class Duet(object):
 
         # Find the location of peaks in the attenuation-delay plane
         self.sym_atn_peak, self.delay_peak = self._find_n_peaks(
-            self.norm_atn_delay_hist, n_peaks=self.n_sources, min_dist=2, threshold=0.2,
+            self.norm_atn_delay_hist, n_peaks=self.n_sources, width=0.5, prominence=5.0
         )
 
         # Assign each time-frequency frame to the nearest peak in phase/amplitude
@@ -267,19 +272,19 @@ class Duet(object):
         Returns
         -------
         tf1 : ndarray
-            STFT of x1.
+            STFT of x1, the ndarray must have the following format (t, f).
         tf2 : ndarray
-            STFT of x2.
+            STFT of x2, the ndarray must have the following format (t, f).
         fmat : ndarray
-            frequency matrix.
+            Frequency matrix, the ndarray must have the following format (t, f).
         """
         # Dividing by maximum to normalise
-        self.x1 = self.x[mic_pair[0]] / np.iinfo(np.int16).max  # origin code: np.iinfo(self.x1.dtype)
-        self.x2 = self.x[mic_pair[1]] / np.iinfo(np.int16).max  # origin code: np.iinfo(self.x2.dtype)
+        self.x1 = self.x[mic_pair[0]] / np.iinfo(np.int16).max
+        self.x2 = self.x[mic_pair[1]] / np.iinfo(np.int16).max
 
         # time-freq domain
-        _, _, tf1 = sp.signal.stft(self.x1, fs=self.sr, window=self._awin, nperseg=self._win_length, return_onesided=False)
-        _, _, tf2 = sp.signal.stft(self.x2, fs=self.sr, window=self._awin, nperseg=self._win_length, return_onesided=False)
+        _, _, tf1 = sp.signal.stft(self.x1, fs=self.fs, window=self._awin, nperseg=self._win_length, return_onesided=False)
+        _, _, tf2 = sp.signal.stft(self.x2, fs=self.fs, window=self._awin, nperseg=self._win_length, return_onesided=False)
 
         # removing DC component
         # Since the scipy stft will scale the return value, in order to match the
@@ -313,18 +318,20 @@ class Duet(object):
         Arguments
         ---------
         tf1 : ndarray
-            STFT of x1.
+            STFT of x1, output from the stft function.
         tf2 : ndarray
-            STFT of x2.
+            STFT of x2, output from the stft function.
         fmat : ndarray
-            frequency matrix.
+            Frequency matrix.
 
         Returns
         -------
         alpha : ndarray
-            the symmetric attenuation.
+            The symmetric attenuation.
+            The ndarray must have the following format (t, f).
         delta : ndarray
-            the relative delay.
+            The relative delay.
+            The ndarray must have the following format (t, f).
         """
         R21 = (tf2 + EPSILON) / (tf1 + EPSILON)
         a = np.abs(R21)
@@ -342,16 +349,19 @@ class Duet(object):
         Arguments
         ---------
         alpha : ndarray
-            the symmetric attenuation.
+            The symmetric attenuation.
+            The ndarray must have the following format (t, f).
         delta : ndarray
-            the relative delay.
+            The relative delay.
+            The ndarray must have the following format (t, f).
 
         Returns
         -------
         A : ndarray
-            a normalized 2D histogram of symmetric attenuation and delay.
+            A normalized 2D histogram of symmetric attenuation and delay.
+            The ndarray must have the following format (alpha, delta).
         tf_weight : ndarray
-            weights. (should add more explanation to this param)
+            Weights. (should add more explanation to this param)
         """
         h1 = np.abs(self.tf1) * np.abs(self.tf2) ** self.p
         h2 = np.abs(self.fmat) ** self.q
@@ -378,7 +388,9 @@ class Duet(object):
 
         return A, tf_weight
 
-    def _find_n_peaks(self, norm_atn_delay_hist, n_peaks=None, min_dist=None, threshold=0.2):
+    def _find_n_peaks(
+        self, norm_atn_delay_hist, n_peaks=None, width=None, threshold=0.2, prominence=None
+    ):
         """
         Find the n largest peaks in the 2D histogram.
 
@@ -387,43 +399,65 @@ class Duet(object):
         Arguments
         ---------
         norm_atn_delay_hist : ndarray
-            a normalized 2D histogram of symmetric attenuation and delay.
+            A normalized 2D histogram of symmetric attenuation and delay.
+            The ndarray must have the following format (alpha, delta).
         n_peaks : int
-            how many peaks should be detected.
+            How many peaks should be detected. If is None, it will set ot 5.
+        width : ndarray
+            Required width of peaks in samples.
+        prominences : ndarray
+            The calculated prominences for each peak in peaks. Wikipedia
+            article for Topographic Prominence:
+            https://en.wikipedia.org/wiki/Topographic_prominence
 
         Returns
         -------
         atn_peak : ndarray
-            an array contains the peaks of symmetric attenuation.
+            An array contains the peaks of symmetric attenuation.
+            The ndarray must have the following format (n_peaks, ).
         delay_peak : ndarray
-            an array contains the peaks of delay.
+            An array contains the peaks of delay.
+            The ndarray must have the following format (n_peaks, ).
         """
         x = np.linspace(-self.delay_max, self.delay_max, self.n_delay_bins)
         y = np.linspace(-self.attenuation_max, self.attenuation_max, self.n_attenuation_bins)
 
         if n_peaks is None:
-            peaks = 5
+            n_peaks = 5
+
+        if prominence is None:
+            print("using max-peak searching")
+            # Peaks: [a_idx, d_inx]
+            peaks = np.asarray(
+                find_peak_indices(norm_atn_delay_hist, n_peaks=n_peaks, min_dist=1, threshold=threshold)
+            )
+
+            cand_peaks = norm_atn_delay_hist[peaks[:, 0], peaks[:, 1]]
+            if n_peaks is None:
+                std = np.sqrt((np.abs(cand_peaks - cand_peaks[0])**2).mean())
+                cand_peaks = cand_peaks[np.abs(cand_peaks - cand_peaks[0]) < std]
+
+            amax_idx = peaks[:cand_peaks.size, 0]
+            dmax_idx = peaks[:cand_peaks.size, 1]
+
         else:
-            peaks = n_peaks
+            # https://stackoverflow.com/questions/1713335/peak-finding-algorithm-for-python-scipy
+            delay_side = np.max(norm_atn_delay_hist, axis=0)
 
-        # Peaks: [a_idx, d_inx]
-        peaks = find_peak_indices(norm_atn_delay_hist, n_peaks=peaks, min_dist=min_dist, threshold=threshold)
-        peaks = np.asarray(peaks)
+            dmax_idx, prop = find_peaks(
+                delay_side,
+                width=width,
+                prominence=prominence,
+            )
 
-        # Alternative method:
-        # peaks = peak_local_max(norm_atn_delay_hist, num_peaks=peaks)
-
-        cand_peaks = norm_atn_delay_hist[peaks[:, 0], peaks[:, 1]]
-        if n_peaks is None:
-            std = np.sqrt((np.abs(cand_peaks - cand_peaks[0])**2).mean())
-            cand_peaks = cand_peaks[np.abs(cand_peaks - cand_peaks[0]) < std*0.7]
-
-        atn_peak = y[peaks[:cand_peaks.size, 0]]
-        delay_peak = x[peaks[:cand_peaks.size, 1]]
-
-        # Debug:
-        # for a_idx, d_inx in peaks:
-        #     print(f"(attenuation, delay) : ({y[a_idx]:>5.2f}, {x[d_inx]:5.2f})")  # debug
+            prom_rank = np.argsort(prop['prominences'])[::-1][:n_peaks]
+            dmax_idx = dmax_idx[prom_rank]
+            self.prominences = prop['prominences'][prom_rank]
+            if dmax_idx.size == 0:
+                dmax_idx = [np.argmax(delay_side)]
+            amax_idx = np.argmax(norm_atn_delay_hist[:, dmax_idx], axis=0)
+        atn_peak = y[amax_idx]
+        delay_peak = x[dmax_idx]
 
         return atn_peak, delay_peak
 
@@ -436,14 +470,17 @@ class Duet(object):
         Arguments
         ---------
         sym_atn_peak : ndarray
-            an array contains the peaks of symmetric attenuation.
+            An array contains the peaks of symmetric attenuation.
+            The ndarray must have the following format (n_peaks, ).
 
         Returns
         -------
         peaka : ndarray
             an array contains the peaks of attenuation.
+            The ndarray must have the following format (n_peaks, ).
         bestind : ndarray
-            (should add more explanation to this param)
+            An array contains the each source which is a mask.
+            The ndarray must have the following format (n_peaks, t, f)
         """
         # convert the symmetric attenuation back to attenuation
         peaka = (sym_atn_peak + np.sqrt(np.square(sym_atn_peak) + 4)) / 2
@@ -470,15 +507,17 @@ class Duet(object):
         Arguments
         ---------
         atn_peak : ndarray
-            an array contains the peaks of attenuation.
+            An array contains the peaks of attenuation.
+            The ndarray must have the following format (n_peaks, ).
         bestind : ndarray
-            (should add more explanation to this param)
+            An array contains the each source which is a mask.
+            The ndarray must have the following format (n_peaks, t, f).
 
         Returns
         -------
         est : ndarray
             an array contains a seperated wave stream of all speakers.
-            the shape is (batch, time_step)
+            The ndarray must have the following format (batch, time_step).
         """
         # 'h' stands for helper, we're using helper variables to break down
         # the logic of what's going on. Apologies for the order of the 'h's
@@ -509,8 +548,7 @@ class Duet(object):
         #     # add back into the demix a little bit of the mixture
         #     # as that eliminates most of the masking artifacts
         #     est[i] = esti[0:self.x1.shape[-1]]
-        #     write(f"out{i}.wav", self.sr, est[i]+0.05*self.x1)
-
+        #     write(f"out{i}.wav", self.fs, est[i]+0.05*self.x1)
         h3 = (atn_peak[:, None, None]
               * np.exp(1j * self.fmat[None, ...] * self.delay_peak[:, None, None])
               * self.tf2[None, ...])
@@ -519,12 +557,13 @@ class Duet(object):
         # In order to avoid errors caused by the observed source
         # being less than the source we set.
         observed_src = h4.shape[0]
-        mask = np.zeros((observed_src, bestind.shape[0], bestind.shape[1]))
+        mask = np.zeros((observed_src, *bestind.shape))
         for i in range(observed_src):
             mask[i, ...] = (bestind == i+1)
 
         h1 = np.zeros((observed_src, 1, self.tf1.shape[-1]))
         h2 = h4 * mask
+
         h = np.concatenate((h1, h2), axis=1)
 
         est = tfsynthesis(observed_src, h, np.sqrt(2)*self._awin/1024, self._hop_length, self._nfft)
@@ -540,67 +579,71 @@ class Duet(object):
         Arguments
         ---------
         bestind : ndarray
-            (should add more explanation to this param)
+            An array contains the each source which is a mask.
+            The ndarray must have the following format (n_peaks, t, f)
 
         Returns
         -------
         est : ndarray
-            an array contains a seperated wave stream of all speakers.
-            the shape is (batch, time_step, n_channels)
+            An array contains a seperated wave stream of all speakers.
+            The ndarray must have the following format (batch, time_step).
         """
         # 'h' stands for helper, we're using helper variables to break down
         # the logic of what's going on. Apologies for the order of the 'h's
         # Broadcast(a bit faster) the n_sources estimations and return directly.
-        # mask -> (n_src, freq, time_step)
-        # h3   -> (freq, time_step, n_channels)
-        # h1   -> (n_src, 1, time_step, n_channels)  # DC component
-        # h2   -> (None, freq, time_step, n_channels) * (n_src, freq, time_step, None)
-        # h    -> (n_src, 1+freq, time_step, n_channels)
+        # mask -> (n_src, t, f)
+        # h3   -> (t, f, n_channels)
+        # h1   -> (n_src, 1, f, n_channels)  # DC component
+        # h2   -> (None, t, f, n_channels) * (n_src, t, f, None)
+        # h    -> (n_src, 1+t, f, n_channels)
 
         # Dividing by maximum to normalise
-        x1 = self.x[0] / np.iinfo(np.int16).max
-        x2 = self.x[1] / np.iinfo(np.int16).max
-        x3 = self.x[2] / np.iinfo(np.int16).max
-        x4 = self.x[3] / np.iinfo(np.int16).max
+        xs = self.x / np.iinfo(np.int16).max
 
         # time-freq domain
-        _, _, tf1 = sp.signal.stft(x1, fs=self.sr, window=self._awin, nperseg=self._win_length, return_onesided=False)
-        _, _, tf2 = sp.signal.stft(x2, fs=self.sr, window=self._awin, nperseg=self._win_length, return_onesided=False)
-        _, _, tf3 = sp.signal.stft(x3, fs=self.sr, window=self._awin, nperseg=self._win_length, return_onesided=False)
-        _, _, tf4 = sp.signal.stft(x4, fs=self.sr, window=self._awin, nperseg=self._win_length, return_onesided=False)
+        _, _, tfs = sp.signal.stft(
+            xs, fs=self.fs, window=self._awin, nperseg=self._win_length, return_onesided=False
+        )
 
         # removing DC component
-        tf1 = tf1[1:, :] * self._awin.sum()
-        tf2 = tf2[1:, :] * self._awin.sum()
-        tf3 = tf3[1:, :] * self._awin.sum()
-        tf4 = tf4[1:, :] * self._awin.sum()
+        tfs = tfs[:, 1:, :] * self._awin.sum()
 
-        h3 = np.stack([tf1, tf2, tf3, tf4], axis=-1)
+        # (n_channels, t, f) -> (t, f, n_channels)
+        h3 = tfs.transpose(1, 2, 0)
 
         observed_src = atn_peak.shape[0]
-        mask = np.zeros((observed_src, bestind.shape[0], bestind.shape[1]))
+        mask = np.zeros((observed_src, *bestind.shape))
         for i in range(observed_src):
             mask[i, ...] = (bestind == i+1)
 
         h1 = np.zeros((observed_src, 1, self.tf1.shape[-1], h3.shape[-1]))
         h2 = h3[None, ...] * mask[..., None]
+
         h = np.concatenate((h1, h2), axis=1)
 
         est = multichl_tfsynthesis(observed_src, h, np.sqrt(2)*self._awin/1024, self._hop_length, self._nfft)
 
         return est[:, 0:self.x1.shape[-1], :]
 
-    def plot_atn_delay_hist(self, save_path=None):
+    def plot_atn_delay_hist(self):
         if self.norm_atn_delay_hist is None:
             raise RuntimeError("It should compute a weighted histogram first.")
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
         X = np.linspace(-self.delay_max, self.delay_max, self.n_delay_bins)
         Y = np.linspace(-self.attenuation_max, self.attenuation_max, self.n_attenuation_bins)
         X, Y = np.meshgrid(X, Y)
-        ax.plot_wireframe(X, Y, self.norm_atn_delay_hist)
+        Z = self.norm_atn_delay_hist
 
-        if save_path is not None and Path(save_path).parent.is_dir():
-            plt.savefig(f'{Path(save_path)}', dpi=300)
+        fig_hist3d = plt.figure(figsize=(8, 8))
+        ax = fig_hist3d.add_subplot(111, projection='3d')
+        ax.plot_surface(X, Y, Z, cmap="plasma", linewidth=0, alpha=0.8)
+        ax.plot(X[0, :], np.max(Z, axis=0), zdir="y", c="hotpink", zs=self.attenuation_max)
+        ax.plot(Y[:, 0], np.max(Z, axis=1), zdir="x", c="hotpink", zs=-self.delay_max)
+        ax.contour(X, Y, Z, zdir='z', offset=Z.min()-Z.max())
+        ax.set_zlim(Z.min()-Z.max(), Z.max()*1.5)
+        ax.tick_params(labelsize="large")
+        plt.xlabel("Delay", fontsize="xx-large")
+        plt.ylabel("Attenuation", fontsize="xx-large")
+
+        plt.tight_layout()
         plt.show()

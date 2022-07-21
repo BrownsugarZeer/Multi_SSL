@@ -47,7 +47,7 @@ def get_microphone_chunks(
     -------
     >>> import soundfile as sf
     >>> from speech_assistance.utils.audio_recorder import get_microphone_chunks
-    >>> for (waveform, sample_rate) in get_microphone_chunks(
+    >>> for sample_rate, waveform in get_microphone_chunks(
     >>>     rate=16000, chunk=1600, n_channels=6, ignored_channels=[0, 5]
     >>> ):
     >>>     # print(waveform)
@@ -60,8 +60,6 @@ def get_microphone_chunks(
     precumulated = deque(maxlen=precumulate)
 
     with MicrophoneStream(**kwargs) as stream:
-        # extract the vad partition
-        # recored_vad = stream.prepare_file(file_name='vad_marker.wav', mode='wb')
 
         audio_generator = stream.generator(resample_rate=resample_rate)
         chunk_length = stream._chunk
@@ -72,10 +70,8 @@ def get_microphone_chunks(
             is_speech = vad.iter(chunk[0])
 
             if is_speech or cumulated:
-                # recored_vad.writeframes(chunk.tobytes())
                 cumulated.append(chunk)
             else:
-                # recored_vad.writeframes(bytes(len(chunk.tobytes())))  # fill in 0
                 precumulated.append(chunk)
 
             if (
@@ -83,8 +79,6 @@ def get_microphone_chunks(
                 or (len(cumulated) > max_to_cumulate)
             ):
                 waveform = np.concatenate((list(precumulated) + cumulated), axis=-1)
-                yield (waveform * stream._rate, stream._rate)
+                yield (stream._rate, waveform * stream._rate)
                 cumulated = []
                 precumulated = deque(maxlen=precumulate)
-
-    # recored_vad.close()
