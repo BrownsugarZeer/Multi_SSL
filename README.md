@@ -24,13 +24,16 @@ The [board](https://github.com/respeaker/usb_4_mic_array) is a far-field microph
 1. Using a microphone stream (online)
 
 ```
-(venv) > python srp_phat_online.py
+(venv) > python srp_phat_online.py  -s=1
 Find 1 available sources.
-azi:   +6.1, ele:  +12.1, xyz: [0.9723699  0.10439985 0.20879988]
+azi:  184.4, ele:   46.4
+===================================================
 Find 1 available sources.
-azi:   +4.1, ele:   +8.0, xyz: [0.98768836 0.06995953 0.13991925]
+azi:  184.4, ele:   46.4
+===================================================
 Find 1 available sources.
-azi:   +4.1, ele:   +8.0, xyz: [0.98768836 0.06995953 0.13991925]
+azi:  276.1, ele:   39.2
+===================================================
 ...
 ```
 
@@ -38,17 +41,14 @@ azi:   +4.1, ele:   +8.0, xyz: [0.98768836 0.06995953 0.13991925]
 
 ```
 # Automatically determine the number of sources
-(venv) > python srp_phat_offline.py --wave=data/a0e45_a-45e5.wav
-Find 3 available sources.
-azi:  -42.2, ele:  +19.7, xyz: [ 0.697037   -0.63311356  0.33661067]
-azi:   -3.6, ele:  +57.5, xyz: [ 0.5367838  -0.03401686  0.8430338 ]
-azi:  -42.6, ele:   +3.4, xyz: [ 0.7347942  -0.6757342   0.05882788]
+(venv) > python srp_phat_offline.py -s=1 -c=4 -i=None --wave=data/a0e20/50cm/a0e19_3_1b6ede00.wav
+Find 1 available sources.
+azi:    0.3, ele:   22.7
 
-# Force to return two sources
-(venv) > python srp_phat_offline.py --wave=data/a0e45_a-45e5.wav --src=2
+(venv) > python srp_phat_offline.py -s=2 -c=4 -i=None --wave=data/a0e20_a45e35/150cm/a0e19_a44e34_3_1c91d780.wav
 Find 2 available sources.
-azi:  -42.6, ele:   +3.4, xyz: [ 0.7347942  -0.6757342   0.05882788]
-azi:   -3.6, ele:  +57.5, xyz: [ 0.5367838  -0.03401686  0.8430338 ]
+azi:   50.8, ele:   43.2
+azi:    2.7, ele:   26.2
 ```
 
 # Visualization
@@ -56,10 +56,15 @@ azi:   -3.6, ele:  +57.5, xyz: [ 0.5367838  -0.03401686  0.8430338 ]
 To easily show what's going on, we use [plotly](https://github.com/plotly/plotly.py) to plot the DOA on a sphere which diameter is 1 meter. The center of the sphere is the microphone array we place at p(x=0, y=0, z=0), the dark blue dots are the Directions of Arrival (DOA), and the lighter dots are the projections on each plane.
 
 ```
-(venv) > python srp_visualizer.py --src=1 --wav=data/a0e55.csv
+(venv) > python srp_visualizer.py -s=1 --wav=data/a0e20/50cm.csv
 ```
 
-<img src="./img/demo_srp_phat.png" width="700">
+50cm\
+<img src="./img/50cm.png" width="700">\
+150cm\
+<img src="./img/150cm.png" width="700">\
+250cm\
+<img src="./img/250cm.png" width="700">
 
 # Issue
 
@@ -67,6 +72,8 @@ To easily show what's going on, we use [plotly](https://github.com/plotly/plotly
 
 # References
 
-1. Dey, Ajoy Kumar, and Susmita Saha. "[Acoustic Beamforming: Design and Development of Steered Response Power With Phase Transformation (SRP-PHAT).](https://www.diva-portal.org/smash/record.jsf?pid=diva2%3A830527&dswid=-9722)" (2011).
+1. S. Rickard, "[The DUET blind source separation algorithm.](https://www.researchgate.net/publication/227143748_The_DUET_blind_source_separation_algorithm)" Blind Speech Separation, pp. 217-241, 2007.
 
-2. Ravanelli, Mirco, et al. "[SpeechBrain: A General-Purpose Speech Toolkit.](https://speechbrain.github.io/)" arXiv preprint arXiv:2106.04624 (2021).
+2. Dey, Ajoy Kumar, and Susmita Saha. "[Acoustic Beamforming: Design and Development of Steered Response Power With Phase Transformation (SRP-PHAT).](https://www.diva-portal.org/smash/record.jsf?pid=diva2%3A830527&dswid=-9722)" (2011).
+
+3. Ravanelli, Mirco, et al. "[SpeechBrain: A General-Purpose Speech Toolkit.](https://speechbrain.github.io/)" arXiv preprint arXiv:2106.04624 (2021).
