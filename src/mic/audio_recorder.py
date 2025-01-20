@@ -8,7 +8,6 @@ Original code repository:
     https://github.com/pytorch/audio/blob/master/examples/interactive_asr/vad.py#L38
 """
 
-
 import numpy as np
 from collections import deque
 
@@ -17,8 +16,8 @@ from .simple_vad import VoiceActivityDetection
 
 
 def get_microphone_chunks(
-    min_to_cumulate=5,      # 0.5 seconds
-    max_to_cumulate=20,     # 2.0 seconds
+    min_to_cumulate=5,  # 0.5 seconds
+    max_to_cumulate=20,  # 2.0 seconds
     precumulate=5,
     max_to_visualize=20,
     resample_rate=None,
@@ -74,9 +73,8 @@ def get_microphone_chunks(
             else:
                 precumulated.append(chunk)
 
-            if (
-                (not is_speech and len(cumulated) >= min_to_cumulate)
-                or (len(cumulated) > max_to_cumulate)
+            if (not is_speech and len(cumulated) >= min_to_cumulate) or (
+                len(cumulated) > max_to_cumulate
             ):
                 waveform = np.concatenate((list(precumulated) + cumulated), axis=-1)
                 yield (stream._rate, waveform * stream._rate)

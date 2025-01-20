@@ -22,12 +22,17 @@ def profile_perf(func):
         with cProfile.Profile() as pr:
             result = func(*args, **kwargs)
         with open(
-            f"perf_{strftime(r'%m_%d-%H_%M_%S')}_{func.__name__}.txt", 'w', encoding="utf-8"
+            f"perf_{strftime(r'%m_%d-%H_%M_%S')}_{func.__name__}.txt",
+            "w",
+            encoding="utf-8",
         ) as stream:
             stats = pstats.Stats(pr, stream=stream)
-            stats.strip_dirs().sort_stats('tottime').print_stats()
-            print(f"function `{func.__name__}` calls in {stats.get_stats_profile().total_tt} seconds")
+            stats.strip_dirs().sort_stats("tottime").print_stats()
+            print(
+                f"function `{func.__name__}` calls in {stats.get_stats_profile().total_tt} seconds"
+            )
         return result
+
     return wrapper
 
 
@@ -42,13 +47,13 @@ def tfsynthesis(n_sources, timefreqmat, swin, hop_length, n_fft):
     """
     # MATLAB and Fortran use column-major layout by default,
     # whereas C and C++ use row-major layout
-    swin = np.reshape(swin, -1, 'F')
+    swin = np.reshape(swin, -1, "F")
 
     win_length = swin.size
     _, n_fft, numtime = timefreqmat.shape
 
     ind = np.fmod(np.arange(win_length), n_fft)
-    x = np.zeros((n_sources, (numtime-1) * hop_length + win_length))
+    x = np.zeros((n_sources, (numtime - 1) * hop_length + win_length))
 
     # Using broadcasted version can speed up about 4 times.
     # Origin code:
@@ -59,7 +64,7 @@ def tfsynthesis(n_sources, timefreqmat, swin, hop_length, n_fft):
     #         x[sind+j] = x[sind+j] + temp[ind[j]] * swin[j]
     temp = n_fft * np.fft.ifft(timefreqmat, axis=1).real
     for i in range(numtime):
-        x[:, i * hop_length: (i+2) * hop_length] += temp[:, ind, i] * swin
+        x[:, i * hop_length : (i + 2) * hop_length] += temp[:, ind, i] * swin
 
     return x
 
@@ -73,17 +78,19 @@ def multichl_tfsynthesis(n_sources, timefreqmat, swin, hop_length, n_fft):
     NUMFREQ is the # of frequency components per time point.\n
     X contains the reconstructed signal.\n
     """
-    swin = np.reshape(swin, -1, 'F')
+    swin = np.reshape(swin, -1, "F")
 
     win_length = swin.size
     _, n_fft, numtime, chls = timefreqmat.shape
 
     ind = np.fmod(np.arange(win_length), n_fft)
-    x = np.zeros((n_sources, (numtime-1) * hop_length + win_length, chls))
+    x = np.zeros((n_sources, (numtime - 1) * hop_length + win_length, chls))
 
     temp = n_fft * np.fft.ifft(timefreqmat, axis=1).real
     for i in range(numtime):
-        x[:, i * hop_length: (i+2) * hop_length, :] += temp[:, ind, i, :] * swin[..., None]
+        x[:, i * hop_length : (i + 2) * hop_length, :] += (
+            temp[:, ind, i, :] * swin[..., None]
+        )
     return x
 
 
@@ -105,16 +112,16 @@ def twoDsmooth(mat, ker):
         kmat = np.ones((ker, ker)) / ker**2
 
     kr, kc = kmat.shape
-    if (kr % 2 == 0):
-        kmat = convolve2d(kmat, np.ones((2, 1)), 'symm', 'same')
+    if kr % 2 == 0:
+        kmat = convolve2d(kmat, np.ones((2, 1)), "symm", "same")
         kr += 1
 
-    if (kc % 2 == 0):
-        kmat = convolve2d(kmat, np.ones((1, 2)), 'symm', 'same')
+    if kc % 2 == 0:
+        kmat = convolve2d(kmat, np.ones((1, 2)), "symm", "same")
         kc += 1
 
     rota = np.rot90(kmat, 2)
-    mat = convolve2d(mat, rota, 'same', 'symm')
+    mat = convolve2d(mat, rota, "same", "symm")
     return mat
 
 
@@ -233,12 +240,16 @@ class Duet(object):
         # For each time/frequency compare the phase and amplitude of the left and
         # right channels. This gives two new coordinates, instead of time-frequency
         # it is phase-amplitude differences.
-        self.symmetric_atn, self.delay = self._compute_atn_delay(self.tf1, self.tf2, self.fmat)
+        self.symmetric_atn, self.delay = self._compute_atn_delay(
+            self.tf1, self.tf2, self.fmat
+        )
 
         # Build a 2-d histogram (one dimension is phase, one is amplitude) where
         # the height at any phase/amplitude is the count of time-frequency bins that
         # have approximately that phase/amplitude.
-        self.norm_atn_delay_hist, self.tf_weight = self._compute_weighted_hist(self.symmetric_atn, self.delay)
+        self.norm_atn_delay_hist, self.tf_weight = self._compute_weighted_hist(
+            self.symmetric_atn, self.delay
+        )
 
         # Find the location of peaks in the attenuation-delay plane
         self.sym_atn_peak, self.delay_peak = self._find_n_peaks(
@@ -283,8 +294,20 @@ class Duet(object):
         self.x2 = self.x[mic_pair[1]] / np.iinfo(np.int16).max
 
         # time-freq domain
-        _, _, tf1 = sp.signal.stft(self.x1, fs=self.fs, window=self._awin, nperseg=self._win_length, return_onesided=False)
-        _, _, tf2 = sp.signal.stft(self.x2, fs=self.fs, window=self._awin, nperseg=self._win_length, return_onesided=False)
+        _, _, tf1 = sp.signal.stft(
+            self.x1,
+            fs=self.fs,
+            window=self._awin,
+            nperseg=self._win_length,
+            return_onesided=False,
+        )
+        _, _, tf2 = sp.signal.stft(
+            self.x2,
+            fs=self.fs,
+            window=self._awin,
+            nperseg=self._win_length,
+            return_onesided=False,
+        )
 
         # removing DC component
         # Since the scipy stft will scale the return value, in order to match the
@@ -335,7 +358,7 @@ class Duet(object):
         """
         R21 = (tf2 + EPSILON) / (tf1 + EPSILON)
         a = np.abs(R21)
-        alpha = a - 1./a
+        alpha = a - 1.0 / a
         delta = -np.imag(np.log(R21)) / fmat
 
         return alpha, delta
@@ -368,19 +391,30 @@ class Duet(object):
         tf_weight = h1 * h2
 
         # only consider time-freq points yielding estimates in bounds
-        amask = (np.abs(alpha) < self.attenuation_max) & (np.abs(delta) < self.delay_max)
+        amask = (np.abs(alpha) < self.attenuation_max) & (
+            np.abs(delta) < self.delay_max
+        )
         alpha_vec = alpha[amask]
         delta_vec = delta[amask]
         tf_weight = tf_weight[amask]
 
         # determine histogram indices
-        alphaind = np.around((self.n_attenuation_bins-1)*(alpha_vec+self.attenuation_max)/(2*self.attenuation_max))
-        deltaind = np.around((self.n_delay_bins-1)*(delta_vec+self.delay_max)/(2*self.delay_max))
+        alphaind = np.around(
+            (self.n_attenuation_bins - 1)
+            * (alpha_vec + self.attenuation_max)
+            / (2 * self.attenuation_max)
+        )
+        deltaind = np.around(
+            (self.n_delay_bins - 1)
+            * (delta_vec + self.delay_max)
+            / (2 * self.delay_max)
+        )
 
         # FULL-SPARSE TRICK TO CREATE 2D WEIGHTED HISTOGRAM
         # A(alphaind(k),deltaind(k)) = tf_weight(k), S is abins-by-dbins
         A = sp.sparse.csr_matrix(
-            (tf_weight, (alphaind, deltaind)), shape=(self.n_attenuation_bins, self.n_delay_bins)
+            (tf_weight, (alphaind, deltaind)),
+            shape=(self.n_attenuation_bins, self.n_delay_bins),
         ).toarray()
 
         # smooth the histogram - local average 3-by-3 neighboring bins
@@ -389,7 +423,12 @@ class Duet(object):
         return A, tf_weight
 
     def _find_n_peaks(
-        self, norm_atn_delay_hist, n_peaks=None, width=None, threshold=0.2, prominence=None
+        self,
+        norm_atn_delay_hist,
+        n_peaks=None,
+        width=None,
+        threshold=0.2,
+        prominence=None,
     ):
         """
         Find the n largest peaks in the 2D histogram.
@@ -420,7 +459,9 @@ class Duet(object):
             The ndarray must have the following format (n_peaks, ).
         """
         x = np.linspace(-self.delay_max, self.delay_max, self.n_delay_bins)
-        y = np.linspace(-self.attenuation_max, self.attenuation_max, self.n_attenuation_bins)
+        y = np.linspace(
+            -self.attenuation_max, self.attenuation_max, self.n_attenuation_bins
+        )
 
         if n_peaks is None:
             n_peaks = 5
@@ -429,16 +470,21 @@ class Duet(object):
             print("using max-peak searching")
             # Peaks: [a_idx, d_inx]
             peaks = np.asarray(
-                find_peak_indices(norm_atn_delay_hist, n_peaks=n_peaks, min_dist=1, threshold=threshold)
+                find_peak_indices(
+                    norm_atn_delay_hist,
+                    n_peaks=n_peaks,
+                    min_dist=1,
+                    threshold=threshold,
+                )
             )
 
             cand_peaks = norm_atn_delay_hist[peaks[:, 0], peaks[:, 1]]
             if n_peaks is None:
-                std = np.sqrt((np.abs(cand_peaks - cand_peaks[0])**2).mean())
+                std = np.sqrt((np.abs(cand_peaks - cand_peaks[0]) ** 2).mean())
                 cand_peaks = cand_peaks[np.abs(cand_peaks - cand_peaks[0]) < std]
 
-            amax_idx = peaks[:cand_peaks.size, 0]
-            dmax_idx = peaks[:cand_peaks.size, 1]
+            amax_idx = peaks[: cand_peaks.size, 0]
+            dmax_idx = peaks[: cand_peaks.size, 1]
 
         else:
             # https://stackoverflow.com/questions/1713335/peak-finding-algorithm-for-python-scipy
@@ -450,9 +496,9 @@ class Duet(object):
                 prominence=prominence,
             )
 
-            prom_rank = np.argsort(prop['prominences'])[::-1][:n_peaks]
+            prom_rank = np.argsort(prop["prominences"])[::-1][:n_peaks]
             dmax_idx = dmax_idx[prom_rank]
-            self.prominences = prop['prominences'][prom_rank]
+            self.prominences = prop["prominences"][prom_rank]
             if dmax_idx.size == 0:
                 dmax_idx = [np.argmax(delay_side)]
             amax_idx = np.argmax(norm_atn_delay_hist[:, dmax_idx], axis=0)
@@ -489,11 +535,15 @@ class Duet(object):
 
         for i in range(sym_atn_peak.size):
             score = (
-                np.abs(peaka[i] * np.exp(-1j*self.fmat*self.delay_peak[i]) * self.tf1 - self.tf2) ** 2
+                np.abs(
+                    peaka[i] * np.exp(-1j * self.fmat * self.delay_peak[i]) * self.tf1
+                    - self.tf2
+                )
+                ** 2
             ) / (1 + peaka[i] ** 2)
             mask = score < bestsofar
             s_mask = score[mask]
-            np.place(bestind, mask, i+1)
+            np.place(bestind, mask, i + 1)
             np.place(bestsofar, mask, s_mask)
 
         return peaka, bestind
@@ -549,26 +599,34 @@ class Duet(object):
         #     # as that eliminates most of the masking artifacts
         #     est[i] = esti[0:self.x1.shape[-1]]
         #     write(f"out{i}.wav", self.fs, est[i]+0.05*self.x1)
-        h3 = (atn_peak[:, None, None]
-              * np.exp(1j * self.fmat[None, ...] * self.delay_peak[:, None, None])
-              * self.tf2[None, ...])
-        h4 = ((self.tf1[None, ...] + h3) / (1 + atn_peak[:, None, None] ** 2))
+        h3 = (
+            atn_peak[:, None, None]
+            * np.exp(1j * self.fmat[None, ...] * self.delay_peak[:, None, None])
+            * self.tf2[None, ...]
+        )
+        h4 = (self.tf1[None, ...] + h3) / (1 + atn_peak[:, None, None] ** 2)
 
         # In order to avoid errors caused by the observed source
         # being less than the source we set.
         observed_src = h4.shape[0]
         mask = np.zeros((observed_src, *bestind.shape))
         for i in range(observed_src):
-            mask[i, ...] = (bestind == i+1)
+            mask[i, ...] = bestind == i + 1
 
         h1 = np.zeros((observed_src, 1, self.tf1.shape[-1]))
         h2 = h4 * mask
 
         h = np.concatenate((h1, h2), axis=1)
 
-        est = tfsynthesis(observed_src, h, np.sqrt(2)*self._awin/1024, self._hop_length, self._nfft)
+        est = tfsynthesis(
+            observed_src,
+            h,
+            np.sqrt(2) * self._awin / 1024,
+            self._hop_length,
+            self._nfft,
+        )
 
-        return est[:, 0:self.x1.shape[-1]]
+        return est[:, 0 : self.x1.shape[-1]]
 
     def _build_multichl_masks(self, atn_peak, bestind):
         """
@@ -602,7 +660,11 @@ class Duet(object):
 
         # time-freq domain
         _, _, tfs = sp.signal.stft(
-            xs, fs=self.fs, window=self._awin, nperseg=self._win_length, return_onesided=False
+            xs,
+            fs=self.fs,
+            window=self._awin,
+            nperseg=self._win_length,
+            return_onesided=False,
         )
 
         # removing DC component
@@ -614,33 +676,43 @@ class Duet(object):
         observed_src = atn_peak.shape[0]
         mask = np.zeros((observed_src, *bestind.shape))
         for i in range(observed_src):
-            mask[i, ...] = (bestind == i+1)
+            mask[i, ...] = bestind == i + 1
 
         h1 = np.zeros((observed_src, 1, self.tf1.shape[-1], h3.shape[-1]))
         h2 = h3[None, ...] * mask[..., None]
 
         h = np.concatenate((h1, h2), axis=1)
 
-        est = multichl_tfsynthesis(observed_src, h, np.sqrt(2)*self._awin/1024, self._hop_length, self._nfft)
+        est = multichl_tfsynthesis(
+            observed_src,
+            h,
+            np.sqrt(2) * self._awin / 1024,
+            self._hop_length,
+            self._nfft,
+        )
 
-        return est[:, 0:self.x1.shape[-1], :]
+        return est[:, 0 : self.x1.shape[-1], :]
 
     def plot_atn_delay_hist(self):
         if self.norm_atn_delay_hist is None:
             raise RuntimeError("It should compute a weighted histogram first.")
 
         X = np.linspace(-self.delay_max, self.delay_max, self.n_delay_bins)
-        Y = np.linspace(-self.attenuation_max, self.attenuation_max, self.n_attenuation_bins)
+        Y = np.linspace(
+            -self.attenuation_max, self.attenuation_max, self.n_attenuation_bins
+        )
         X, Y = np.meshgrid(X, Y)
         Z = self.norm_atn_delay_hist
 
         fig_hist3d = plt.figure(figsize=(8, 8))
-        ax = fig_hist3d.add_subplot(111, projection='3d')
+        ax = fig_hist3d.add_subplot(111, projection="3d")
         ax.plot_surface(X, Y, Z, cmap="plasma", linewidth=0, alpha=0.8)
-        ax.plot(X[0, :], np.max(Z, axis=0), zdir="y", c="hotpink", zs=self.attenuation_max)
+        ax.plot(
+            X[0, :], np.max(Z, axis=0), zdir="y", c="hotpink", zs=self.attenuation_max
+        )
         ax.plot(Y[:, 0], np.max(Z, axis=1), zdir="x", c="hotpink", zs=-self.delay_max)
-        ax.contour(X, Y, Z, zdir='z', offset=Z.min()-Z.max())
-        ax.set_zlim(Z.min()-Z.max(), Z.max()*1.5)
+        ax.contour(X, Y, Z, zdir="z", offset=Z.min() - Z.max())
+        ax.set_zlim(Z.min() - Z.max(), Z.max() * 1.5)
         ax.tick_params(labelsize="large")
         plt.xlabel("Delay", fontsize="xx-large")
         plt.ylabel("Attenuation", fontsize="xx-large")

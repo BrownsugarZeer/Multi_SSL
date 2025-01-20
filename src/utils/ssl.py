@@ -27,11 +27,9 @@ def inti_mics(rotation=0):
     mics[3, :] = torch.Tensor([-0.02285, +0.02285, +0.005])
 
     if rotation:
-        sin = np.sin(rotation * np.pi / 180.)
-        cos = np.cos(rotation * np.pi / 180.)
-        r_mat = torch.Tensor(
-            [[cos, sin, 0.], [-sin, cos, 0.], [0., 0., 1.]]
-        )
+        sin = np.sin(rotation * np.pi / 180.0)
+        cos = np.cos(rotation * np.pi / 180.0)
+        r_mat = torch.Tensor([[cos, sin, 0.0], [-sin, cos, 0.0], [0.0, 0.0, 1.0]])
         mics = torch.matmul(mics, r_mat)
     return mics
 
@@ -56,7 +54,7 @@ def doa_detection(waveform, mics=None):
     doas = srpphat(XXs)
     doas = doas[:, 0, :]
     doas[:, 2] = doas[:, 2].abs()
-    r = (doas[:, 0]**2 + doas[:, 1]**2).sqrt()
+    r = (doas[:, 0] ** 2 + doas[:, 1] ** 2).sqrt()
     azi = torch.atan2(doas[:, 1], doas[:, 0]).rad2deg()
     ele = torch.atan2(doas[:, 2], r).rad2deg()
 

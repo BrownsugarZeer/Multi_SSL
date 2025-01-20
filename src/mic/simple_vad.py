@@ -13,7 +13,6 @@ References:
     Available: https://ieeexplore.ieee.org/document/7077834
 """
 
-
 import numpy as np
 
 
@@ -132,9 +131,8 @@ class VoiceActivityDetection(object):
                 return self.speech_mark
         else:
             # Silence detected
-            self.min_energy = (
-                ((self.silent_count * self.min_energy) + energy)
-                / (self.silent_count + 1)
+            self.min_energy = ((self.silent_count * self.min_energy) + energy) / (
+                self.silent_count + 1
             )
             self.silent_count += 1
             # Inertia against switching

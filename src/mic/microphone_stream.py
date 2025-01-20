@@ -8,7 +8,6 @@ Original code repository:
     https://github.com/pytorch/audio/blob/master/examples/interactive_asr/vad.py#L38
 """
 
-
 import numpy as np
 import pyaudio
 import queue
@@ -42,7 +41,7 @@ class MicrophoneStream(object):
         chunk,
         n_channels=1,
         ignored_channels: Optional[List] = None,
-        device=None
+        device=None,
     ):
         """
         The ratio of [chunk / rate] is the amount of time between
@@ -91,7 +90,7 @@ class MicrophoneStream(object):
         self._audio_interface.terminate()
         # self._recored_wav.close()
 
-    def prepare_file(self, file_name, mode='wb'):
+    def prepare_file(self, file_name, mode="wb"):
         """Create a wave file to record the audio stream"""
         wavefile = wave.open(file_name, mode)
         wavefile.setnchannels(self._channels)
@@ -101,9 +100,7 @@ class MicrophoneStream(object):
 
     def _fill_buffer(self, in_data, frame_count, time_info, status_flags):
         """Continuously collect data from the audio stream, into the buffer."""
-        self._buff.put(
-            np.frombuffer(in_data, dtype=np.float32)
-        )
+        self._buff.put(np.frombuffer(in_data, dtype=np.float32))
         # self._recored_wav.writeframes(in_data)
         return None, pyaudio.paContinue
 
