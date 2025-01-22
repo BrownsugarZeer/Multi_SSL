@@ -1,39 +1,15 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import scipy as sp
 import sys
-from pathlib import Path
+import numpy as np
+import scipy as sp
+import plotly.graph_objects as go
 from scipy.signal import convolve2d, find_peaks
-from .find_peaks import find_peak_indices
-from functools import wraps
+from plotly.subplots import make_subplots
 
-import cProfile
-import pstats
-from time import strftime
+from multi_ssl.utils.find_peaks import find_peak_indices
+
 
 np.set_printoptions(threshold=sys.maxsize)
-FILEDIR = Path(__file__).resolve().parent
 EPSILON = 1e-16
-
-
-def profile_perf(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        with cProfile.Profile() as pr:
-            result = func(*args, **kwargs)
-        with open(
-            f"perf_{strftime(r'%m_%d-%H_%M_%S')}_{func.__name__}.txt",
-            "w",
-            encoding="utf-8",
-        ) as stream:
-            stats = pstats.Stats(pr, stream=stream)
-            stats.strip_dirs().sort_stats("tottime").print_stats()
-            print(
-                f"function `{func.__name__}` calls in {stats.get_stats_profile().total_tt} seconds"
-            )
-        return result
-
-    return wrapper
 
 
 def tfsynthesis(n_sources, timefreqmat, swin, hop_length, n_fft):
@@ -697,25 +673,52 @@ class Duet(object):
         if self.norm_atn_delay_hist is None:
             raise RuntimeError("It should compute a weighted histogram first.")
 
-        X = np.linspace(-self.delay_max, self.delay_max, self.n_delay_bins)
-        Y = np.linspace(
+        x = np.linspace(-self.delay_max, self.delay_max, self.n_delay_bins)
+        y = np.linspace(
             -self.attenuation_max, self.attenuation_max, self.n_attenuation_bins
         )
-        X, Y = np.meshgrid(X, Y)
-        Z = self.norm_atn_delay_hist
+        x, y = np.meshgrid(x, y)
+        z = self.norm_atn_delay_hist
 
-        fig_hist3d = plt.figure(figsize=(8, 8))
-        ax = fig_hist3d.add_subplot(111, projection="3d")
-        ax.plot_surface(X, Y, Z, cmap="plasma", linewidth=0, alpha=0.8)
-        ax.plot(
-            X[0, :], np.max(Z, axis=0), zdir="y", c="hotpink", zs=self.attenuation_max
+        fig = make_subplots(specs=[[{"type": "scene"}]])
+        fig.add_trace(go.Surface(x=x, y=y, z=z, colorscale="plasma", opacity=0.8))
+
+        fig.add_trace(
+            go.Scatter3d(
+                x=x[0, :],
+                y=[self.attenuation_max] * len(x[0, :]),
+                z=np.max(z, axis=0),
+                mode="lines",
+                line=dict(color="hotpink", width=3),
+                showlegend=False,
+            )
         )
-        ax.plot(Y[:, 0], np.max(Z, axis=1), zdir="x", c="hotpink", zs=-self.delay_max)
-        ax.contour(X, Y, Z, zdir="z", offset=Z.min() - Z.max())
-        ax.set_zlim(Z.min() - Z.max(), Z.max() * 1.5)
-        ax.tick_params(labelsize="large")
-        plt.xlabel("Delay", fontsize="xx-large")
-        plt.ylabel("Attenuation", fontsize="xx-large")
 
-        plt.tight_layout()
-        plt.show()
+        fig.add_trace(
+            go.Scatter3d(
+                x=[-self.delay_max] * len(y[:, 0]),
+                y=y[:, 0],
+                z=np.max(z, axis=1),
+                mode="lines",
+                line=dict(color="hotpink", width=3),
+                showlegend=False,
+            )
+        )
+        fig.update_layout(
+            scene=dict(
+                xaxis_title="Delay",
+                yaxis_title="Attenuation",
+                zaxis_title="Magnitude",
+                xaxis=dict(tickfont=dict(size=12)),
+                yaxis=dict(tickfont=dict(size=12)),
+                zaxis=dict(tickfont=dict(size=12)),
+                camera=dict(
+                    up=dict(x=0, y=0, z=1),
+                    center=dict(x=0, y=0, z=0),
+                    eye=dict(x=1.5, y=-1.5, z=0.2),
+                ),
+            ),
+            width=800,
+            height=800,
+        )
+        fig.write_html("DUET.html", auto_open=True)
