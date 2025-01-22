@@ -60,6 +60,8 @@ azi:  184.7, ele:   22.0
 
 You can test the DUET algorithm by running the script in `tests` folder. Here is the results of the test.
 
+https://github.com/user-attachments/assets/8b9b9b52-4342-4659-a95a-5deec2ccaec0
+
 <img src="./img/duet.png" width="300">
 
 ## Visualization
