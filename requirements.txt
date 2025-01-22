@@ -1,8 +1,5 @@
-autopep8==1.5.7
-matplotlib==3.4.3
-numpy==1.22.0
-plotly==5.4.0
-pylint==2.10.2
-scipy==1.11.1
-SoundFile==0.10.3.post1
-speechbrain==0.5.9
+speechbrain>=0.5.9
+plotly>=5.4.0
+PyAudio>=0.2.14
+soundfile>=0.13.0
+icecream>=2.1.4
