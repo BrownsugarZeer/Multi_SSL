@@ -1,10 +1,10 @@
 import numpy as np
 import plotly.graph_objects as go
 from pathlib import Path
-from src.utils.cmd_parser import parsing_params
+from multi_ssl.utils import parsing_params
 
 
-PRETTY_PRINT = True
+PRETTY_PRINT = False
 TEMPLATE = "plotly_dark" if PRETTY_PRINT else "presentation"
 PAPER_BGCOLOR = "#212946" if PRETTY_PRINT else None
 PLOT_BGCOLOR = "#212946" if PRETTY_PRINT else None
@@ -13,12 +13,14 @@ GRID_COLOR = "#5063AB" if PRETTY_PRINT else None
 MARKER_COLOR = "#00AFFF"
 MARKER_PROJ_COLOR = "#005FFF"
 
-MICS = np.array([
-    [-0.02285, -0.02285, +0.005],
-    [+0.02285, -0.02285, +0.005],
-    [+0.02285, +0.02285, +0.005],
-    [-0.02285, +0.02285, +0.005],
-])
+MICS = np.array(
+    [
+        [+0.02285, +0.02285, +0.005],  # mic 1
+        [-0.02285, +0.02285, +0.005],  # mic 2
+        [-0.02285, -0.02285, +0.005],  # mic 3
+        [+0.02285, -0.02285, +0.005],  # mic 4
+    ]
+)
 
 
 class PlotlySphere:
@@ -34,62 +36,107 @@ class PlotlySphere:
         self._fig.write_html(fname, auto_open=auto_open)
 
     def _create_sphere(self):
-        phi, theta = np.mgrid[0.0:np.pi:100j, 0.0:2.0*np.pi:100j]
-        x = self.r*np.sin(phi)*np.cos(theta)
-        y = self.r*np.sin(phi)*np.sin(theta)
-        z = self.r*np.cos(phi)
+        phi, theta = np.mgrid[0.0 : np.pi : 100j, 0.0 : 2.0 * np.pi : 100j]
+        x = self.r * np.sin(phi) * np.cos(theta)
+        y = self.r * np.sin(phi) * np.sin(theta)
+        z = self.r * np.cos(phi)
 
         circle_r = 0.035
-        circle_theta = np.linspace(0, 2*np.pi, 100)
+        circle_theta = np.linspace(0, 2 * np.pi, 100)
         circle_x = circle_r * np.cos(circle_theta)
         circle_y = circle_r * np.sin(circle_theta)
         circle_z = np.zeros_like(circle_theta)
 
         self._fig.add_surface(
-            x=x, y=y, z=z,
+            x=x,
+            y=y,
+            z=z,
             opacity=0.05,
             colorscale="Plotly3",
             contours_z=dict(
-                show=True,
-                usecolormap=True,
-                highlightcolor="limegreen",
-                project_z=True
+                show=True, usecolormap=True, highlightcolor="limegreen", project_z=True
             ),
             hoverinfo="skip",
             name="sphere",
         )
 
-        self._fig.add_traces([
+        arrows = [
             go.Scatter3d(
-                x=circle_x, y=circle_y, z=circle_z,
-                mode="lines",
-                line=dict(color="black", width=2),
-                name="mic_array1",
+                x=[0, 0.2],
+                y=[0, 0],
+                z=[0, 0],
+                mode="lines+text",
+                line=dict(color="gray", width=4),
+                text="0°",
             ),
             go.Scatter3d(
-                x=self._mic_pos[:, 0], y=self._mic_pos[:, 1], z=self._mic_pos[:, 2],
-                mode="markers",
-                marker=dict(
-                    color=["lightgreen", "green", "darkseagreen", "darkseagreen"],
-                    size=5
+                x=[0, 0],
+                y=[0, 0.2],
+                z=[0, 0],
+                mode="lines+text",
+                line=dict(color="gray", width=4),
+                text="90°",
+            ),
+            go.Scatter3d(
+                x=[0, -0.2],
+                y=[0, 0],
+                z=[0, 0],
+                mode="lines+text",
+                line=dict(color="gray", width=4),
+                text="180°",
+            ),
+            go.Scatter3d(
+                x=[0, 0],
+                y=[0, -0.2],
+                z=[0, 0],
+                mode="lines+text",
+                line=dict(color="gray", width=4),
+                text="270°",
+            ),
+        ]
+
+        self._fig.add_traces(
+            [
+                go.Scatter3d(
+                    x=circle_x,
+                    y=circle_y,
+                    z=circle_z,
+                    mode="lines",
+                    line=dict(color="black", width=2),
+                    name="mic_array1",
                 ),
-                name="mic_array2",
-            ),
-            go.Scatter3d(
-                x=[0], y=[0], z=[1],
-                mode="markers",
-                marker=dict(color="rgb(0,95,255)", size=5),
-                visible=False,
-                name="sound_sources",
-            ),
-            # If you want to connect between two points
-            # go.Scatter3d(
-            #     x=[0., 0.], y=[0., 0.], z=[0., 0.],
-            #     visible=False,
-            #     mode="lines",
-            #     name="lines",
-            # ),
-        ])
+                go.Scatter3d(
+                    x=self._mic_pos[:, 0],
+                    y=self._mic_pos[:, 1],
+                    z=self._mic_pos[:, 2],
+                    mode="markers+text",
+                    marker=dict(
+                        color=["darkseagreen"] * 4,
+                        size=5,
+                    ),
+                    text=["mic1", "mic2", "mic3", "mic4"],
+                    textposition="top center",
+                    name="mic_array2",
+                ),
+                go.Scatter3d(
+                    x=[0],
+                    y=[0],
+                    z=[1],
+                    mode="markers",
+                    marker=dict(color="rgb(0,95,255)", size=5),
+                    visible=False,
+                    name="sound_sources",
+                ),
+                # If you want to connect between two points
+                # go.Scatter3d(
+                #     x=[0., 0.], y=[0., 0.], z=[0., 0.],
+                #     visible=False,
+                #     mode="lines",
+                #     name="lines",
+                # ),
+                *arrows,  # Add arrows after existing traces
+            ]
+        )
 
         self._fig.update_layout(
             title={"text": "SRP-PHAT Visualizer", "x": 0.47, "y": 0.99},
@@ -100,10 +147,12 @@ class PlotlySphere:
                 xaxis=dict(
                     backgroundcolor=PAPER_BGCOLOR,
                     gridcolor=GRID_COLOR,
+                    title="Y",
                 ),
                 yaxis=dict(
                     backgroundcolor=PAPER_BGCOLOR,
                     gridcolor=GRID_COLOR,
+                    title="X",
                 ),
                 zaxis=dict(
                     backgroundcolor=PAPER_BGCOLOR,
@@ -111,18 +160,30 @@ class PlotlySphere:
                 ),
             ),
             showlegend=False,
-            margin=go.layout.Margin(l=0, r=0, b=0, t=0, pad=0)
+            margin=go.layout.Margin(l=0, r=0, b=0, t=0, pad=0),
         )
 
     def update_doas(self, points, name="sound_sources"):
         self._fig.for_each_trace(
-            lambda trace: trace.update(
-                x=points[:, 0], y=points[:, 1], z=points[:, 2],
-                visible=True,
-            ) if trace.name == name else (),
+            lambda trace: (
+                trace.update(
+                    x=points[:, 0],
+                    y=points[:, 1],
+                    z=points[:, 2],
+                    visible=True,
+                )
+                if trace.name == name
+                else ()
+            ),
         )
 
-    def add_doas(self, doas, show_xyz_proj=None):
+    def add_doas(
+        self,
+        doas,
+        show_xyz_proj=None,
+        color_marker=MARKER_COLOR,
+        color_proj=MARKER_PROJ_COLOR,
+    ):
         """Add the direction of arrivals in the Cartesian coordinates.
 
         doas : np.ndarray
@@ -140,26 +201,43 @@ class PlotlySphere:
         points = np.stack((x, y, z), axis=-1)
 
         scatter_list = [
-            [points[:, 0], points[:, 1], points[:, 2], MARKER_COLOR],                   # xyz
+            [points[:, 0], points[:, 1], points[:, 2], color_marker],  # xyz
         ]
 
         xyz_plane = [
-            [points[:, 0], points[:, 1], np.zeros(len(points))-1, MARKER_PROJ_COLOR],   # xy_plane
-            [points[:, 0], np.zeros(len(points))+1, points[:, 2], MARKER_PROJ_COLOR],   # yz_plane
-            [np.zeros(len(points))-1, points[:, 1], points[:, 2], MARKER_PROJ_COLOR],   # xz_plane
+            [
+                points[:, 0],
+                points[:, 1],
+                np.zeros(len(points)) - 1,
+                color_proj,
+            ],  # xy_plane
+            [
+                points[:, 0],
+                np.zeros(len(points)) + 1,
+                points[:, 2],
+                color_proj,
+            ],  # yz_plane
+            [
+                np.zeros(len(points)) - 1,
+                points[:, 1],
+                points[:, 2],
+                color_proj,
+            ],  # xz_plane
         ]
 
         if isinstance(show_xyz_proj, list):
             for proj, plane in zip(show_xyz_proj, xyz_plane):
-                if len(proj*plane) != 0:
-                    scatter_list.extend([proj*plane])
+                if len(proj * plane) != 0:
+                    scatter_list.extend([proj * plane])
         elif show_xyz_proj:
             scatter_list.extend(xyz_plane)
 
         for x, y, z, c in scatter_list:
             tbox = "X: %{x:.3f}<br>y: %{y:.3f}<br>z: %{z:.3f}<extra></extra>"
             self._fig.add_scatter3d(
-                x=x, y=y, z=z,
+                x=x,
+                y=y,
+                z=z,
                 mode="markers",
                 marker=dict(color=c, size=5),
                 hovertemplate=tbox,
@@ -178,17 +256,24 @@ def main():
     fname = Path(params.wave)
 
     ps = PlotlySphere()
-    for c in [(col*2, col*2+1) for col in range(params.src)]:
+
+    # Example of defining color arrays for up to four sources:
+    colors_marker = ["#00AFFF", "#FF0000", "#00FF00", "#FFD700"]
+    colors_proj = ["#005FFF", "#BB00BB", "#00BB55", "#FFA500"]
+
+    for i, c in enumerate([(col * 2, col * 2 + 1) for col in range(params.src)]):
         doas = np.genfromtxt(
-            fname,
-            delimiter=",",
-            skip_header=True,
-            usecols=c,
-            dtype=np.float32
+            fname, delimiter=",", skip_header=True, usecols=c, dtype=np.float32
         )
-        ps.add_doas(doas, show_xyz_proj=[True, False, False])
+        ps.add_doas(
+            doas,
+            show_xyz_proj=[True, False, False],
+            color_marker=colors_marker[i],
+            color_proj=colors_proj[i],
+        )
+
     ps(fname=fname.with_suffix(".html"))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
