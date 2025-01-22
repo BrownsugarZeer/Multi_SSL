@@ -11,12 +11,10 @@ Original code repository:
 import numpy as np
 import pyaudio
 import queue
-import wave
-from scipy import signal
-from typing import List, Optional
+from typing import List
 
 
-class MicrophoneStream(object):
+class MicrophoneStream:
     """
     Opens a recording stream as a generator yielding the audio chunks.
     It supports a multiple channels and chose the channels which want
@@ -30,17 +28,21 @@ class MicrophoneStream(object):
     rate : int
         sampling rate.
     chunk : int
-        Specifies the number of frames per buffer., default is mono.
-    n_channels : int
+        Specifies the number of frames per buffer, default is mono channel.
+    channels : int
         The number of channels.
+    ignored_channels : Optional[List]
+        The list of channels to ignore.
+    device : int
+        The device index to use, default is None.
     """
 
     def __init__(
         self,
-        rate,
-        chunk,
-        n_channels=1,
-        ignored_channels: Optional[List] = None,
+        rate: int,
+        chunk: int,
+        channels: int = 1,
+        ignored_channels: List[str] | None = None,
         device=None,
     ):
         """
@@ -52,15 +54,28 @@ class MicrophoneStream(object):
         self._rate = rate
         self._chunk = chunk
         self._device = device
-        self._channels = n_channels
+        self._channels = channels
         self._ignored_channels = ignored_channels
         self._buff = queue.Queue()  # create a thread-safe buffer of audio data.
-        self.closed = True
+        self._closed = True
         self._format_type = pyaudio.paFloat32
         self._audio_stream = None
 
-        # extract the audio
-        # self._recored_wav = self.prepare_file(file_name='audiotest.wav', mode='wb')
+    @property
+    def rate(self):
+        return self._rate
+
+    @property
+    def chunk(self):
+        return self._chunk
+
+    @property
+    def channels(self):
+        return self._channels
+
+    @property
+    def ignored_channels(self):
+        return self._ignored_channels
 
     def __enter__(self):
         # Specifies a callback function for non-blocking (callback) operation
@@ -77,35 +92,25 @@ class MicrophoneStream(object):
             input_device_index=self._device,
             stream_callback=self._fill_buffer,
         )
-        self.closed = False
+        self._closed = False
         return self
 
     def __exit__(self, type, value, traceback):
         self._audio_stream.stop_stream()
         self._audio_stream.close()
-        self.closed = True
+        self._closed = True
         # Signal the generator to terminate so that the client's
         # streaming_recognize method will not block the process termination.
         self._buff.put(None)
         self._audio_interface.terminate()
-        # self._recored_wav.close()
-
-    def prepare_file(self, file_name, mode="wb"):
-        """Create a wave file to record the audio stream"""
-        wavefile = wave.open(file_name, mode)
-        wavefile.setnchannels(self._channels)
-        wavefile.setsampwidth(self._audio_interface.get_sample_size(self._format_type))
-        wavefile.setframerate(self._rate)
-        return wavefile
 
     def _fill_buffer(self, in_data, frame_count, time_info, status_flags):
         """Continuously collect data from the audio stream, into the buffer."""
         self._buff.put(np.frombuffer(in_data, dtype=np.float32))
-        # self._recored_wav.writeframes(in_data)
         return None, pyaudio.paContinue
 
-    def generator(self, resample_rate: Optional[int] = None):
-        while not self.closed:
+    def __iter__(self):
+        while not self._closed:
             # Use a blocking get() to ensure there's at least one chunk of
             # data, and stop iteration if the chunk is None, indicating the
             # end of the audio stream.
@@ -122,16 +127,13 @@ class MicrophoneStream(object):
                 except queue.Empty:
                     break
 
-            # reshape from (channels * chunk, ) to (channels, chunk) and ignore
-            # the channels if specified. i.g. (9600, ) -> (6, 1600), if ignored
-            # ch0 and ch5, the final results will be (4, 1600)
-            chunk = np.reshape(chunk, (self._channels, -1), order="F")
+            # reshape from (channels * chunk, ) to (chunk, channels) and ignore
+            # the channels if specified. i.g. (9600, ) -> (1600, 6), if ignored
+            # ch0 and ch5, the final results will be (1600, 4)
+            chunk = np.reshape(chunk, (-1, self._channels))
             if self._ignored_channels is not None:
                 mask = np.ones(self._channels, bool)
                 mask[self._ignored_channels] = False
-                chunk = chunk[mask]
+                chunk = chunk[:, mask]
 
-            if resample_rate is None:
-                yield chunk
-            else:
-                yield signal.resample(chunk, resample_rate, axis=1)
+            yield chunk

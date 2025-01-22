@@ -1,3 +1,5 @@
+# NOTE: This code is deprecated.
+
 """
 # Copyright (c) 2017-present, Facebook, Inc.
 # All rights reserved.
@@ -16,7 +18,7 @@ References:
 import numpy as np
 
 
-class VoiceActivityDetection(object):
+class VoiceActivityDetection:
     """
     There are three criteria to decide if a frame contains speech: energy, most
     dominant frequency, and spectral flatness. If any two of those are higher than
@@ -123,11 +125,11 @@ class VoiceActivityDetection(object):
                 and self.speech_count <= self.ignore_speech_count
             ):
                 # Too soon to change
-                # print(f'\r(Speech__{self.speech_count:<3d}) [-] silence', end='')
+                # print(f"\r(Speech__{self.speech_count:<3d}) [-] silence", end="")
                 return self.silence_mark
             else:
                 self.silent_count = 0
-                # print(f'\r(Speech__{self.speech_count:<3d}) [O] speech', end='')
+                # print(f"\r(Speech__{self.speech_count:<3d}) [O] speech", end="")
                 return self.speech_mark
         else:
             # Silence detected
@@ -141,9 +143,9 @@ class VoiceActivityDetection(object):
                 and self.silent_count <= self.ignore_silent_count
             ):
                 # Too soon to change
-                # print(f'\r(Silence_{self.silent_count:<3d}) [O] speech', end='')
+                # print(f"\r(Silence_{self.silent_count:<3d}) [O] speech", end="")
                 return self.speech_mark
             else:
                 self.speech_count = 0
-                # print(f'\r(Silence_{self.silent_count:<3d}) [-] silence', end='')
+                # print(f"\r(Silence_{self.silent_count:<3d}) [-] silence", end="")
                 return self.silence_mark
